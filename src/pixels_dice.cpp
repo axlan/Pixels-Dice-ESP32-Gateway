@@ -145,6 +145,7 @@ bool PixelDice::connect()
         return false;
     }
 
+    Serial.println("Finding service");
     BLERemoteService *pRemoteService = client->getService(serviceUUID);
     if (pRemoteService == nullptr)
     {
@@ -153,6 +154,7 @@ bool PixelDice::connect()
         return false;
     }
 
+    Serial.println("Finding characteristic");
     BLERemoteCharacteristic *pRemoteCharacteristic = pRemoteService->getCharacteristic(notifUUID);
     if (pRemoteCharacteristic == nullptr)
     {
@@ -161,6 +163,7 @@ bool PixelDice::connect()
         return false;
     }
 
+    Serial.println("Register notifications");
     if (pRemoteCharacteristic->canNotify())
     {
         auto callback = std::bind(&PixelDice::notifyCallback, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
@@ -293,7 +296,7 @@ void startScan(void *parameter)
         pScan->clearResults();
         Serial.println(">>> SCAN END <<<");
         PixelDiceManager::getInstance().debugDiceList();
-        delay(2000);
+        delay(20000);
     }
 }
 
@@ -347,8 +350,8 @@ void PixelDiceManager::loop()
     {
         Serial.println("SCAN UPDATE");
     }
-    // Serial.print("LOOP");
-    // delay(10000);
+    Serial.print("LOOP");
+    delay(10000);
 }
 
 PixelDiceManager &PixelDiceManager::getInstance()
