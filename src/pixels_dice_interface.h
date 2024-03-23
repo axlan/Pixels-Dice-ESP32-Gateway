@@ -34,6 +34,14 @@ struct BlinkData {
   uint8_t fade = 0;  // Amount of in and out fading (0: sharp transition 255:
                      // maximum fading.)
   uint8_t loop = 0;  // Whether to indefinitely loop the animation
+  BlinkData(uint8_t count, uint16_t duration, uint32_t color, uint32_t mask,
+            uint8_t fade, uint8_t loop)
+      : count(count),
+        duration(duration),
+        color(color),
+        mask(mask),
+        fade(fade),
+        loop(loop) {}
 };
 
 enum class RollState {
@@ -43,6 +51,22 @@ enum class RollState {
   ROLLING = 3,
   CROOKED = 4,
 };
+
+inline const char* ToString(RollState state) {
+  switch (state) {
+    case RollState::UNKNOWN:
+      return "UNKNOWN";
+    case RollState::ON_FACE:
+      return "ON_FACE";
+    case RollState::HANDLING:
+      return "HANDLING";
+    case RollState::ROLLING:
+      return "ROLLING";
+    case RollState::CROOKED:
+      return "CROOKED";
+  }
+  return "INVALID";
+}
 
 enum class DieConnectionState {
   CONNECTED,
@@ -77,29 +101,31 @@ using BatteryUpdates = std::vector<std::pair<PixelsDieID, BatteryEvent>>;
  * Run a bluetooth scan looking for new dice.
  *
  * @param duration The duration in seconds to run the scan.
+ * @param time_between_scans The time to wait in seconds between scans.
  * @param auto_connect Whether to automatically connect to any die found.
  */
-void ScanForDice(uint32_t duration, bool auto_connect = true);
+void ScanForDice(uint32_t scan_time, uint32_t time_between_scans,
+                 bool auto_connect = true);
+
+void StopScanning();
 
 /**
  * Get the list of dice that have been found based on their connection status.
  *
- * @param die_to_list Select whether to return connected, disconnected, or all
- * dice.
  * @param out_list The list to update with the dice. Any previous contents are
  * cleared.
+ * @param die_to_list Select whether to return connected, disconnected, or all
+ * dice.
  */
-void ListDice(DieConnectionState die_to_list,
-              std::vector<PixelsDieID>& out_list);
+void ListDice(std::vector<PixelsDieID>& out_list,
+              DieConnectionState die_to_list = DieConnectionState::CONNECTED);
 
 /**
  * Try to establish a connection to a die.
  *
  * @param id The die to connect to.
- *
- * @return `true` if the die now has an active connection.
  */
-bool ConnectDie(PixelsDieID id);
+void ConnectDie(PixelsDieID id);
 
 /**
  * End the connection to a die.
