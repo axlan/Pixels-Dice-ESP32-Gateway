@@ -7,13 +7,52 @@
  * polling.
  *
  * This has the following trade offs:
- * 1. Scans for new dice can't be run in the background.
- * 2. Events are queued and don't trigger immediate callbacks.
- * 3. This requires more data copying and allocations then might be needed
- * otherwise.
+ * 1. Events are queued and don't trigger immediate callbacks.
+ * 2. This requires more data copying and allocations then might be needed
+ *    otherwise.
+ * 3. This wastes a lot of power/CPU compared to an interface that exposes more
+ *    of the BLE search details.
  *
  * The goal here is simplicity, hiding as much of the implementation details as
  * possible.
+ *
+ * I'm also not particularly knowledgeable on the details of the BLE stack, so
+ * some things are probably being done wrong/inefficiently.
+ *
+ * At a high level here's how this works:
+ *
+ * # Finding / Connecting to Dice
+ * This interface doesn't do anything until ScanForDice is started. This
+ * functions starts a FreeRTOS task in the background that manages searching for
+ * new dice and connecting to them. My understanding is that the connect,
+ * functionality blocks while a search is running, so the dice that are found
+ * are only connected to when the search period is complete. These scans can be
+ * stopped to save power or if you don't want to find new dice.
+ *
+ * By default each dice found is connected to, but by setting auto_connect to
+ * false, connecting to the die can be handled manually with the ConnectDie
+ * function.
+ *
+ * Once a die is found, it remains forever in the dice list and will be accessed
+ * by it's PixelsDieID. It's description can be accessed through
+ * GetDieDescription even if it's disconnected.
+ *
+ * # Handling Events
+ * Events are read by polling the GetDieRollUpdates and GetDieBatteryUpdates
+ * functions.
+ *
+ * These return all the events sent out by the connected die since the last
+ * call.
+ *
+ * These queues continue to grow if not read, so they should be polled
+ * regularly. There is a cutoff of 1000 values currently.
+ *
+ * TODO:
+ * 1. Implement any useful missing features of the interface.
+ * 2. Improve battery reporting. It seems to jump around, and probably doesn't
+ *    need to be event driven.
+ * 3. Add timestamps to roll events.
+ * 4. Make Arduino/PlatformIO library.
  */
 #pragma once
 
@@ -121,7 +160,7 @@ void ListDice(std::vector<PixelsDieID>& out_list,
               DieConnectionState die_to_list = DieConnectionState::CONNECTED);
 
 /**
- * Try to establish a connection to a die.
+ * Start trying to establish a connection to a die.
  *
  * @param id The die to connect to.
  */
@@ -135,7 +174,7 @@ void ConnectDie(PixelsDieID id);
 void DisconnectDie(PixelsDieID id);
 
 /**
- * Send a blink command to a die.
+ * Send a blink command to a connected die.
  *
  * See:
  * https://github.com/GameWithPixels/.github/blob/main/doc/CommunicationsProtocol.md#blink
@@ -150,6 +189,8 @@ bool SendDieBlink(PixelsDieID id, const BlinkData& blink);
 /**
  * Get the fixed description of a die from when it was found in the BLE scan.
  *
+ * This works even if the die is disconnected.
+ *
  * @param id The die to disconnect from.
  *
  * @return The description of the die.
@@ -157,12 +198,13 @@ bool SendDieBlink(PixelsDieID id, const BlinkData& blink);
 DescriptionData GetDieDescription(PixelsDieID id);
 
 /**
- * Get any new rolls that occurred since this function was last called.
+ * Get any new rolls from connected die that occurred since this function was
+ * last called.
  */
 void GetDieRollUpdates(RollUpdates& out_events);
 
 /**
- * Get any Battery changes since this was last called.
+ * Get any Battery changes from connected since this was last called.
  */
 void GetDieBatteryUpdates(BatteryUpdates& out_events);
 }  // namespace pixels

@@ -53,6 +53,8 @@ static constexpr const char *serviceUUID =
 static constexpr const char *notifUUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
 static constexpr const char *writeUUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
 
+static constexpr size_t MAX_EVENT_QUEUE_SIZE = 1000;
+
 static std::atomic<uint32_t> scan_duration_{0};
 static std::atomic<uint32_t> time_between_scans_{0};
 static std::atomic<bool> run_scans_{false};
@@ -139,24 +141,25 @@ void PixelAdvertiseCallbacks::onResult(BLEAdvertisedDevice advertisedDevice) {
 static void PixelNotifyCallback(
     PixelsDieID id, BLERemoteCharacteristic *pBLERemoteCharacteristic,
     uint8_t *pData, size_t length, bool isNotify) {
-  /*
-  Serial.print("Notify callback for characteristic ");
-  Serial.print(pBLERemoteCharacteristic->getUUID().toString().c_str());
-  Serial.print(" of data length ");
-  Serial.println(length);
-  Serial.print("Data type: ");
-  Serial.println(pData[0]);
-  */
 
   if (pData[0] == 3) {
     log_i("Roll state: %u, face: %u", pData[1], pData[2]);
     if (xSemaphoreTake(event_mutex_handle_, portMAX_DELAY)) {
+      if (roll_updates_.size() >= MAX_EVENT_QUEUE_SIZE) {
+        roll_updates_.erase(roll_updates_.begin());
+      }
       roll_updates_.emplace_back(id, RollEvent{RollState(pData[1]), pData[2]});
       xSemaphoreGive(event_mutex_handle_);
     }
   } else if (pData[0] == 34) {
-    // Serial.print("Battery level: "); Serial.print(pData[1]); Serial.print("
-    // state: ");  Serial.println(pData[2]);
+    log_i("Battery level: %u%%, is_charging: %u", pData[1], pData[2]);
+    if (xSemaphoreTake(event_mutex_handle_, portMAX_DELAY)) {
+      if (battery_updates_.size() >= MAX_EVENT_QUEUE_SIZE) {
+        battery_updates_.erase(battery_updates_.begin());
+      }
+      battery_updates_.emplace_back(id, BatteryEvent{pData[1], pData[2]});
+      xSemaphoreGive(event_mutex_handle_);
+    }
   }
 }
 
@@ -225,9 +228,11 @@ static void ScanTaskLoop(void *parameter) {
   ble_scanner->setWindow(99);  // less or equal setInterval value
 
   while (true) {
-    log_i("Start BLE scan");
-    ble_scanner->start(scan_duration_);
-    log_i("End BLE scan");
+    if (run_scans_) {
+      log_i("Start BLE scan");
+      ble_scanner->start(scan_duration_);
+      log_i("End BLE scan");
+    }
     UpdateDieConnections();
     vTaskDelay(pdMS_TO_TICKS(time_between_scans_ * 1000));
   }
@@ -346,7 +351,7 @@ void GetDieRollUpdates(RollUpdates &out_events) {
   }
 }
 
-void GetBatteryUpdates(BatteryUpdates &out_events) {
+void GetDieBatteryUpdates(BatteryUpdates &out_events) {
   out_events.clear();
   if (xSemaphoreTake(event_mutex_handle_, portMAX_DELAY)) {
     std::swap(out_events, battery_updates_);
